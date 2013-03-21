@@ -1,0 +1,277 @@
+<?php
+
+/**
+ * @file
+ * Provides functionality to log activities to the Experience API.
+ */
+
+/**
+ * Implements hook_init().
+ */
+function xapi_init() {
+  // Add javascript
+  drupal_add_js(drupal_get_path('module', 'xapi') .'/xapi.js', 'file');
+}
+
+/**
+ * Implements hook_menu().
+ */
+function xapi_menu() {
+  $items = array();
+  
+  // Administrative settings.
+  $items['admin/config/xapi'] = array(
+    'title' => 'XAPI',
+    'description' => 'ExperienceAPI settings.',
+    'file' => 'xapi.admin.inc',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('xapi_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/xapi/settings'] = array(
+    'title' => 'Experience API settings',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => 0,
+  );
+
+  // XAPI user interface Ajax callback
+  $items['xapi/view'] = array(
+    'page callback' => 'xapi_register_view',
+    'access arguments' => array('access content'),
+    MENU_CALLBACK,
+  );
+  
+  return $items;
+}
+
+/**
+ * Register a view after the user presses a button.
+ * 
+ * Expects the following $_GET parameters:
+ * entity		Entity type
+ * eid			Entity ID
+ * verb			Verb
+ */
+function xapi_register_view() {
+  $entity = !empty($_GET['entity']) ? $_GET['entity'] : ''; 
+  $eid = !empty($_GET['eid']) ? $_GET['eid'] : 0;
+  $verb = !empty($_GET['verb']) ? $_GET['verb'] : '';
+  if ( $entity && $eid && $verb ) {
+    xapi_log($verb, $entity, $eid);
+  }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function xapi_node_insert($node) {
+  // Check if we need to log an insert option for this node type.
+  $verb = variable_get('xapi_' . $node->type . '_insert');
+  if ( $verb ) {
+    xapi_log($verb, 'node', $node->nid);
+  }
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function xapi_node_update($node) {
+  // Check if we need to log an edit option for this node type.
+  $verb = variable_get('xapi_' . $node->type . '_update');
+  if ( $verb ) {
+    xapi_log($verb, 'node', $node->nid);
+  }
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function xapi_node_delete($node) {
+  // Check if we need to log a delete option for this node type.
+  $verb = variable_get('xapi_' . $node->type . '_delete');
+  if ( $verb ) {
+    xapi_log($verb, 'node', $node->nid);
+  }
+}
+
+/**
+* Implements hook_node_view().
+*/
+function xapi_node_view($node, $view_mode, $langcode) {
+  $verb = variable_get('xapi_comment_view');
+  if ( !$verb ) {
+    return;
+  }
+  if ($view_mode == 'full' ) {
+    global $user;
+    $mode = variable_get('xapi_views_mode', -1);
+    switch ( $mode ) {
+      case 0: // Register always when visiting
+        xapi_log($verb, 'node', $node->nid);
+        break;
+      case 1: // ALways show a button
+        $node->content['xapi-viewed'] = array('#markup' =>
+          '<div class="xapi-viewed"><button class="btn btn-success btn-mini" entity="node" eid="' . $node->nid . '" verb="' . $verb . '">' . t('I have read this') . '</button></div>');
+        break;
+      case 2: // Register always when visiting
+        // Check if the user has already logged a view
+        $sql = "SELECT aid FROM {xapi_activities} WHERE uid=:uid AND entity_id=:nid AND entity_type='node' AND verb=:verb LIMIT 0,1";
+        $result = db_query($sql, array(':uid' => $user->uid, ':nid' => $node->nid, ':verb' => $verb));
+        if ( !$result->fetchObject() ) {
+          // Not viewed yet. Show the button.
+          $node->content['xapi-viewed'] = array('#markup' =>
+            '<div class="xapi-viewed"><button class="btn btn-success btn-mini" entity="node" eid="' . $node->nid . '" verb="' . $verb . '">' . t('I have read this') . '</button></div>');
+        }
+        break;
+    }
+  }
+}
+
+/**
+ * Implements hook_comment_insert().
+ */
+function xapi_comment_insert($comment) {
+  // Check if we need to log an insert option for this comment.
+  $verb = variable_get('xapi_comment_insert');
+  if ( $verb ) {
+    xapi_log($verb, 'comment', $comment->cid);
+  }
+}
+
+/**
+ * Implements hook_comment_update().
+ */
+function xapi_comment_update($comment) {
+  // Check if we need to log an insert option for this comment.
+  $verb = variable_get('xapi_comment_update');
+  if ( $verb ) {
+    xapi_log($verb, 'comment', $comment->cid);
+  }
+}
+
+/**
+ * Implements hook_comment_delete().
+ */
+function xapi_comment_delete($comment) {
+  // Check if we need to log an insert option for this comment.
+  $verb = variable_get('xapi_comment_delete');
+  if ( $verb ) {
+    xapi_log($verb, 'comment', $comment->cid);
+  }
+}
+
+/**
+ * Implements hook_comment_view().
+ */
+function xapi_comment_view($comment, $view_mode, $lang) {
+  // Check if we need to log an insert option for this comment.
+  $verb = variable_get('xapi_comment_view');
+  if ( !$verb ) {
+    return;
+  }
+  if ($view_mode == 'full' ) {
+    global $user;
+    $mode = variable_get('xapi_views_mode', -1);
+    switch ( $mode ) {
+      case 0: // Register always when visiting
+        xapi_log($verb, 'comment', $comment->cid);
+        break;
+      case 1: // ALways show a button
+        $comment->content['xapi-viewed'] = array('#markup' =>
+          '<div class="xapi-viewed"><button class="btn btn-success btn-mini" entity="comment" eid="' . $comment->cid . '" verb="' . $verb . '">' . t('I have read this') . '</button></div>');
+        break;
+      case 2: // Register always when visiting
+        // Check if the user has already logged a view
+        $sql = "SELECT aid FROM {xapi_activities} WHERE uid=:uid AND entity_id=:cid AND entity_type='comment' AND verb=:verb LIMIT 0,1";
+        $result = db_query($sql, array(':uid' => $user->uid, ':cid' => $comment->cid, ':verb' => $verb));
+        if ( !$result->fetchObject() ) {
+          // Not viewed yet. Show the button.
+          $comment->content['xapi-viewed'] = array('#markup' =>
+            '<div class="xapi-viewed"><button class="btn btn-success btn-mini" entity="comment" eid="' . $comment->cid . '" verb="' . $verb . '">' . t('I have read this') . '</button></div>');
+        }
+        break;
+    }
+  }
+}
+
+/**
+ * Central logging of verbs.
+ * 
+ * @param string $verb
+ *   XAPI verb.
+ * @param string $entity_type
+ *   Entity type name.
+ * @param integer $eid
+ *   Entity ID (nid for nodes and cid for comments).
+ * @param StdClass $account
+ *   Optional account for which to log the experience.
+ * @return void
+ */
+function xapi_log($verb, $entity_type, $eid, $account = NULL) {
+  global $user;
+  
+  if ( !$account ) {
+    $account = $user;
+  }
+  switch ( $entity_type ) {
+    case 'node':
+      $node = node_load($eid);
+      $name = $node->title;
+      break;
+    case 'comment':
+      $comment = comment_load($eid);
+      $name = $comment->subject;
+      break;
+    default:
+      $name = t('Unknown');
+  }
+  // Log in the activities table
+  $sql = "INSERT INTO {xapi_activities} (uid,entity_type,entity_id,created,verb) VALUES (:uid,:entity_type,:entity_id,:created,:verb)";
+  db_query($sql, array(':uid' => $account->uid, ':entity_type' => $entity_type, ':entity_id' => $eid, ':created' => time(), ':verb' => $verb));
+  // Write to the XAPI endpoint if there is an endpoint
+  $endpoint = variable_get('xapi_endpoint', '');
+  $appid = variable_get('xapi_app_id', '');
+  if ( $endpoint && $appid ) {
+    $url = $endpoint . (substr($endpoint, -1) !== '/' ? '/' : '') . $appid . (substr($appid, -1) !== '/' ? '/' : '') . 'statements';
+    
+    $stmt = '{
+              "actor": {
+                  "name": "' . $account->name . '",
+                  "mbox": "mailto:' . $account->mail . '"
+               },
+               "verb": {
+                   "id": "http://adlnet.gov/expapi/verbs/' . $verb .'",
+                   "display":
+                     {
+                     		"en-US": "' . $verb . '"
+          					 }
+                   },
+               "object": {
+                   "id": "http://' . $_SERVER['SERVER_NAME'] . '/' . $entity_type . '/' . $eid . '",
+                   "definition": {
+                       "name": {
+                       		"en-US": "' . check_plain($name) . '" }
+                   }
+               },
+               "context": {
+					         "platform": "http://' . $_SERVER['SERVER_NAME'] . '"
+    					 }
+             }';
+    $secret = variable_get('xapi_app_secret', '');
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_USERPWD, $appid . ':' . $secret);
+    curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+    curl_setopt($ch, CURLOPT_POST, TRUE);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    //curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $stmt);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+      'Content-Type: application/json',                                                                                
+      'Content-Length: ' . strlen($stmt),
+      'X-Experience-API-Version: 0.95',                                                                       
+    ));
+    
+    $response = curl_exec($ch);
+  }
+}

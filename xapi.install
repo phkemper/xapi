@@ -1,0 +1,86 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for XAPI.
+ *
+ * @ingroup xapi
+ */
+
+/**
+ * Implements hook_install().
+ */
+function xapi_install() {
+  // Set some default variables necessary for the module to perform.
+  variable_set('xapi_endpoint', 'https://cloud.scorm.com/ScormEngineInterface/TCAPI/');
+  variable_set('xapi_app_id', '');
+  variable_set('xapi_app_secret', '');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function xapi_uninstall() {
+  // Delete all the XAPI variables and then clear the variable cache.
+  db_query("DELETE FROM {variable} WHERE name LIKE 'xapi\_%'");
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+* Implements hook_schema().
+*/
+function xapi_schema() {
+  $schema = array(
+    'xapi_activities' => array(
+      'description' => 'The activites that each uers has peformed.',
+      'fields' => array(
+        'aid' => array(
+          'description' => 'Unique ID in this table.',
+          'type' => 'serial',
+        ),
+        'uid' => array(
+          'description' => 'User for which this activity is logged as in users.uid.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => '0',
+          'unsigned' => TRUE,
+        ),
+        'entity_type' => array(
+          'description' => 'Entity type (node, comment, ...) for which this activity is logged.',
+          'type' => 'varchar',
+          'not null' => TRUE,
+          'default' => 'node',
+          'length' => 128,
+        ),
+        'entity_id' => array(
+          'description' => 'Entity for which this activity is logged.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => '0',
+          'unsigned' => TRUE,
+        ),
+        'created' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+          'description' => 'The time that the activity was created, as a Unix timestamp.',
+        ),
+        'verb' => array(
+          'description' => 'XAPI verb.',
+          'type' => 'varchar',
+          'not null' => TRUE,
+          'default' => '',
+          'length' => 128,
+        ),
+      ),
+      'primary key' => array('aid'),
+      'indexes' => array(
+        'i1' => array('uid'),
+        'i2' => array('created'),
+        'i3' => array('entity_type', 'entity_id'),
+      ),
+    ),
+  );
+  return $schema;
+}
+
